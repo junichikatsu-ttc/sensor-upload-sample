@@ -1,0 +1,15 @@
+# PlatformIO
+.pio
+.pioenvs
+.piolibdeps
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
