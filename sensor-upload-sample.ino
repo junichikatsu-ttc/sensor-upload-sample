@@ -14,10 +14,70 @@ bool bmeReady = false;
 #endif
 
 #if ENABLE_MPU6050
-#include <Adafruit_Sensor.h>
-#include <Adafruit_MPU6050.h>
-Adafruit_MPU6050 mpu;
 bool mpuReady = false;
+
+// MPU-6050 / 互換チップ (0x74等) の初期化
+bool initMPUDirect(uint8_t addr) {
+  // 1. スリープ解除 (PWR_MGMT_1 レジスタ 0x6B に 0x00 を書き込み)
+  Wire.beginTransmission(addr);
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  if (Wire.endTransmission() != 0) {
+    return false;
+  }
+  delay(10);
+
+  // 2. 加速度設定: ±8g (ACCEL_CONFIG レジスタ 0x1C に 0x10 を書き込み)
+  Wire.beginTransmission(addr);
+  Wire.write(0x1C);
+  Wire.write(0x10);
+  Wire.endTransmission();
+
+  // 3. ジャイロ設定: ±500 deg/s (GYRO_CONFIG レジスタ 0x1B に 0x08 を書き込み)
+  Wire.beginTransmission(addr);
+  Wire.write(0x1B);
+  Wire.write(0x08);
+  Wire.endTransmission();
+
+  return true;
+}
+
+// MPU-6050 / 互換チップから14バイトを一括読み出し
+bool readMPUDirect(uint8_t addr, float &ax, float &ay, float &az, float &gx, float &gy, float &gz, float &tempC) {
+  Wire.beginTransmission(addr);
+  Wire.write(0x3B); // ACCEL_XOUT_H
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+
+  // 14バイト要求 (Accel X,Y,Z: 6バイト, Temp: 2バイト, Gyro X,Y,Z: 6バイト)
+  if (Wire.requestFrom((uint8_t)addr, (uint8_t)14) != 14) {
+    return false;
+  }
+
+  int16_t rawAx = (Wire.read() << 8) | Wire.read();
+  int16_t rawAy = (Wire.read() << 8) | Wire.read();
+  int16_t rawAz = (Wire.read() << 8) | Wire.read();
+  int16_t rawTemp = (Wire.read() << 8) | Wire.read();
+  int16_t rawGx = (Wire.read() << 8) | Wire.read();
+  int16_t rawGy = (Wire.read() << 8) | Wire.read();
+  int16_t rawGz = (Wire.read() << 8) | Wire.read();
+
+  // 加速度 (±8g, 4096 LSB/g) -> m/s^2 (1g = 9.80665 m/s^2)
+  ax = (rawAx / 4096.0) * 9.80665;
+  ay = (rawAy / 4096.0) * 9.80665;
+  az = (rawAz / 4096.0) * 9.80665;
+
+  // 温度 (°C)
+  tempC = (rawTemp / 340.0) + 36.53;
+
+  // ジャイロ (±500 deg/s, 65.5 LSB/(deg/s)) -> rad/s
+  gx = (rawGx / 65.5) * (PI / 180.0);
+  gy = (rawGy / 65.5) * (PI / 180.0);
+  gz = (rawGz / 65.5) * (PI / 180.0);
+
+  return true;
+}
 #endif
 
 // Wi-Fi SSL クライアント
@@ -130,6 +190,67 @@ bool uploadSensorData(const String& jsonPayload) {
   return isSuccess;
 }
 
+// I2C バススキャン＆MPU-6050診断関数
+void scanI2CBus() {
+  Serial.println("\n--- [診断] I2C バススキャン開始 ---");
+  byte count = 0;
+  for (byte address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+
+    if (error == 0) {
+      Serial.print("I2C デバイス検出: 0x");
+      if (address < 16) Serial.print("0");
+      Serial.print(address, HEX);
+
+      if (address == 0x68 || address == 0x69) {
+        Serial.print(" (MPU-6050 / 6500候補)");
+        // WHO_AM_I レジスタ (0x75) を直接読み取り
+        Wire.beginTransmission(address);
+        Wire.write(0x75);
+        if (Wire.endTransmission(false) == 0) {
+          Wire.requestFrom((uint8_t)address, (uint8_t)1);
+          if (Wire.available()) {
+            byte whoami = Wire.read();
+            Serial.print(" -> WHO_AM_I (Chip ID): 0x");
+            Serial.print(whoami, HEX);
+            if (whoami == 0x68) {
+              Serial.print(" [MPU-6050 純正]");
+            } else if (whoami == 0x70) {
+              Serial.print(" [MPU-6500 互換チップ]");
+            } else if (whoami == 0x72 || whoami == 0x98) {
+              Serial.print(" [MPU互換/ICMシリーズ]");
+            } else {
+              Serial.print(" [未知のID]");
+            }
+          }
+        }
+      } else if (address == 0x76 || address == 0x77) {
+        Serial.print(" (BME280 / BMP280候補)");
+      }
+      Serial.println();
+      count++;
+    } else if (error == 4) {
+      Serial.print("0x");
+      if (address < 16) Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.println(" で通信エラー (error=4)");
+    }
+  }
+
+  if (count == 0) {
+    Serial.println("[警告] I2Cデバイスが1台も検出されませんでした！");
+    Serial.println("  1. 配線 (VCC, GND, SDA, SCL) が接触不良になっていないか確認してください。");
+    Serial.println("  2. GY-521モジュール等の場合、VCCは 5V ピンに接続してみてください (内蔵レギュレータのため)。");
+    Serial.println("  3. SDA/SCLピンが正しく接続されているか確認してください (A4/A5 または専用SDA/SCL)。");
+  } else {
+    Serial.print("I2Cスキャン完了: 計 ");
+    Serial.print(count);
+    Serial.println(" 台のデバイスが応答しました。");
+  }
+  Serial.println("-----------------------------------\n");
+}
+
 void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 3000) {
@@ -143,6 +264,10 @@ void setup() {
 
   // I2Cバス初期化
   Wire.begin();
+  delay(100); // センサーの起動待ち
+
+  // I2Cスキャンを実行して接続状態を診断
+  scanI2CBus();
 
   // BME280初期化
 #if ENABLE_BME280
@@ -162,12 +287,9 @@ void setup() {
   Serial.print("MPU-6050初期化中 (0x");
   Serial.print(MPU6050_I2C_ADDR, HEX);
   Serial.print(")... ");
-  if (mpu.begin(MPU6050_I2C_ADDR)) {
+  if (initMPUDirect(MPU6050_I2C_ADDR)) {
     mpuReady = true;
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    Serial.println("成功!");
+    Serial.println("成功! (互換チップ対応モード)");
   } else {
     Serial.println("失敗! 配線またはI2Cアドレスを確認してください。");
   }
@@ -216,27 +338,32 @@ void loop() {
     // MPU-6050 のデータ取得
 #if ENABLE_MPU6050
     if (mpuReady) {
-      sensors_event_t a, g, temp;
-      mpu.getEvent(&a, &g, &temp);
+      float ax = 0, ay = 0, az = 0;
+      float gx = 0, gy = 0, gz = 0;
+      float mpuTemp = 0;
 
-      // BME280が未設定の場合はMPUの温度をメイン温度にする
-      if (!tempAssigned) {
-        primaryTemp = temp.temperature;
-        tempAssigned = true;
-        doc["temp"] = primaryTemp;
+      if (readMPUDirect(MPU6050_I2C_ADDR, ax, ay, az, gx, gy, gz, mpuTemp)) {
+        // BME280が未設定の場合はMPUの温度をメイン温度にする
+        if (!tempAssigned) {
+          primaryTemp = mpuTemp;
+          tempAssigned = true;
+          doc["temp"] = primaryTemp;
+        } else {
+          doc["mpu_temp"] = mpuTemp;
+        }
+
+        JsonObject accel = doc["accel"].to<JsonObject>();
+        accel["x"] = ax;
+        accel["y"] = ay;
+        accel["z"] = az;
+
+        JsonObject gyro = doc["gyro"].to<JsonObject>();
+        gyro["x"] = gx;
+        gyro["y"] = gy;
+        gyro["z"] = gz;
       } else {
-        doc["mpu_temp"] = temp.temperature;
+        Serial.println("[警告] MPU-6050 データ読み出し失敗");
       }
-
-      JsonObject accel = doc["accel"].to<JsonObject>();
-      accel["x"] = a.acceleration.x;
-      accel["y"] = a.acceleration.y;
-      accel["z"] = a.acceleration.z;
-
-      JsonObject gyro = doc["gyro"].to<JsonObject>();
-      gyro["x"] = g.gyro.x;
-      gyro["y"] = g.gyro.y;
-      gyro["z"] = g.gyro.z;
     }
 #endif
 
