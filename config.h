@@ -19,8 +19,8 @@
 // ==========================================
 // 3. センサー有効化フラグ（true / false で切り替え）
 // ==========================================
-#define ENABLE_BME280     false  // BME280 (温度・湿度・気圧) を有効化
-#define ENABLE_MPU6050    false  // MPU-6050 (加速度・ジャイロ・温度) を有効化
+#define ENABLE_BME280     true  // BME280 (温度・湿度・気圧) を有効化
+#define ENABLE_MPU6050    true  // MPU-6050 (加速度・ジャイロ・温度) を有効化
 #define ENABLE_ULTRASONIC true   // GROVE 超音波距離センサ (SKU: 1383) を有効化
 #define ENABLE_DHT11      true   // GROVE デジタル温湿度センサ DHT11 (SKU: 818) を有効化
 
