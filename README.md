@@ -45,7 +45,7 @@ Grove Base Shield 等を使用してデジタルポートに接続するか、Gr
 
 // 2. クラウド設定
 #define SENSOR_NUMBER   "2*3670**"                    // センサー識別番号
-#define SERVER_HOST     "lcdp003.enebular.com"        // サーバーホスト名
+#define SERVER_HOST     "lcdp005.enebular.com"        // サーバーホスト名
 #define SERVER_PORT     443                           // HTTPS ポート
 #define SERVER_PATH     "/ttc-iot-sensor-mcp/v1/sensors" // POST 送信先パス
 #define UPLOAD_INTERVAL 5000                          // 送信間隔 (ミリ秒)

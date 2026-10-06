@@ -201,6 +201,7 @@ bool uploadSensorData(const String& jsonPayload) {
   return isSuccess;
 }
 
+#if ENABLE_BME280 || ENABLE_MPU6050
 // I2C バススキャン＆MPU-6050診断関数
 void scanI2CBus() {
   Serial.println("\n--- [診断] I2C バススキャン開始 ---");
@@ -261,6 +262,7 @@ void scanI2CBus() {
   }
   Serial.println("-----------------------------------\n");
 }
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -273,12 +275,14 @@ void setup() {
   Serial.println("Arduino UNO R4 WiFi センサーアップロード");
   Serial.println("========================================");
 
+#if ENABLE_BME280 || ENABLE_MPU6050
   // I2Cバス初期化
   Wire.begin();
   delay(100); // センサーの起動待ち
 
   // I2Cスキャンを実行して接続状態を診断
   scanI2CBus();
+#endif
 
   // BME280初期化
 #if ENABLE_BME280
