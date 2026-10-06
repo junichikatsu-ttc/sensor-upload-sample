@@ -13,6 +13,17 @@ Adafruit_BME280 bme;
 bool bmeReady = false;
 #endif
 
+#if ENABLE_DHT11
+#include <DHT.h>
+DHT dht(DHT11_PIN, DHT11);
+bool dhtReady = false;
+#endif
+
+#if ENABLE_ULTRASONIC
+#include <Ultrasonic.h>
+Ultrasonic ultrasonic(ULTRASONIC_PIN);
+#endif
+
 #if ENABLE_MPU6050
 bool mpuReady = false;
 
@@ -295,6 +306,23 @@ void setup() {
   }
 #endif
 
+  // DHT11 初期化
+#if ENABLE_DHT11
+  Serial.print("DHT11初期化中 (Pin D");
+  Serial.print(DHT11_PIN);
+  Serial.print(")... ");
+  dht.begin();
+  dhtReady = true;
+  Serial.println("完了!");
+#endif
+
+  // 超音波距離センサ初期化
+#if ENABLE_ULTRASONIC
+  Serial.print("超音波距離センサ初期化 (Pin D");
+  Serial.print(ULTRASONIC_PIN);
+  Serial.println(")... 完了!");
+#endif
+
   // Wi-Fi 接続
   connectToWiFi();
 }
@@ -343,7 +371,7 @@ void loop() {
       float mpuTemp = 0;
 
       if (readMPUDirect(MPU6050_I2C_ADDR, ax, ay, az, gx, gy, gz, mpuTemp)) {
-        // BME280が未設定の場合はMPUの温度をメイン温度にする
+        // 先行センサーで温度が未設定の場合はMPUの温度をメイン温度にする
         if (!tempAssigned) {
           primaryTemp = mpuTemp;
           tempAssigned = true;
@@ -364,6 +392,42 @@ void loop() {
       } else {
         Serial.println("[警告] MPU-6050 データ読み出し失敗");
       }
+    }
+#endif
+
+    // DHT11 温湿度のデータ取得
+#if ENABLE_DHT11
+    if (dhtReady) {
+      float dhtTemp = dht.readTemperature();
+      float dhtHumidity = dht.readHumidity();
+
+      if (!isnan(dhtTemp) && !isnan(dhtHumidity)) {
+        if (!tempAssigned) {
+          primaryTemp = dhtTemp;
+          tempAssigned = true;
+          doc["temp"] = primaryTemp;
+        } else {
+          doc["dht_temp"] = dhtTemp;
+        }
+
+        if (!doc.containsKey("humidity")) {
+          doc["humidity"] = dhtHumidity;
+        } else {
+          doc["dht_humidity"] = dhtHumidity;
+        }
+      } else {
+        Serial.println("[警告] DHT11 データ読み出し失敗");
+      }
+    }
+#endif
+
+    // 超音波距離センサのデータ取得
+#if ENABLE_ULTRASONIC
+    long distanceCm = ultrasonic.MeasureInCentimeters();
+    if (distanceCm > 0) {
+      doc["distance"] = distanceCm;
+    } else {
+      doc["distance"] = 0;
     }
 #endif
 
