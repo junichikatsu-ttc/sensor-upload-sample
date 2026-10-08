@@ -3,7 +3,7 @@
 Arduino UNO R4 WiFi を使用して、各種センサーのデータを取得し、enebular / クラウドサーバーへ HTTPS POST で送信するサンプルプログラムです。
 
 対応センサー：
-- **BME280**（温湿度・気圧センサー / I2C）
+- **BME280 / BMP280**（温湿度・気圧センサー / I2C ※自動判別対応、BMP280時は温度・気圧）
 - **MPU-6050**（6軸加速度・ジャイロセンサー / I2C）
 - **GROVE 超音波距離センサモジュール** ([SKU: 1383](https://www.switch-science.com/products/1383) / デジタルピン)
 - **GROVE デジタル温度・湿度センサ DHT11** ([SKU: 818](https://www.switch-science.com/products/818) / デジタルピン)

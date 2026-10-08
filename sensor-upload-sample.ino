@@ -9,8 +9,11 @@
 #if ENABLE_BME280
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_BMP280.h>
 Adafruit_BME280 bme;
+Adafruit_BMP280 bmp;
 bool bmeReady = false;
+bool bmpReady = false;
 #endif
 
 #if ENABLE_DHT11
@@ -239,6 +242,26 @@ void scanI2CBus() {
         }
       } else if (address == 0x76 || address == 0x77) {
         Serial.print(" (BME280 / BMP280候補)");
+        // チップID レジスタ 0xD0 を読み取り
+        Wire.beginTransmission(address);
+        Wire.write(0xD0);
+        if (Wire.endTransmission(false) == 0) {
+          Wire.requestFrom((uint8_t)address, (uint8_t)1);
+          if (Wire.available()) {
+            byte chipId = Wire.read();
+            Serial.print(" -> Chip ID: 0x");
+            Serial.print(chipId, HEX);
+            if (chipId == 0x60) {
+              Serial.print(" [BME280 純正 (温湿度・気圧)]");
+            } else if (chipId == 0x58) {
+              Serial.print(" [BMP280 純正 (温度・気圧)]");
+            } else if (chipId == 0x56 || chipId == 0x57) {
+              Serial.print(" [BMP280 サンプル/互換]");
+            } else {
+              Serial.print(" [未知のID]");
+            }
+          }
+        }
       }
       Serial.println();
       count++;
@@ -284,14 +307,17 @@ void setup() {
   scanI2CBus();
 #endif
 
-  // BME280初期化
+  // BME280 / BMP280 初期化
 #if ENABLE_BME280
-  Serial.print("BME280初期化中 (0x");
+  Serial.print("BME280 / BMP280 初期化中 (0x");
   Serial.print(BME280_I2C_ADDR, HEX);
   Serial.print(")... ");
   if (bme.begin(BME280_I2C_ADDR)) {
     bmeReady = true;
-    Serial.println("成功!");
+    Serial.println("成功! (BME280 検出: 温度・湿度・気圧)");
+  } else if (bmp.begin(BME280_I2C_ADDR)) {
+    bmpReady = true;
+    Serial.println("成功! (BMP280 検出: 温度・気圧)");
   } else {
     Serial.println("失敗! 配線またはI2Cアドレスを確認してください。");
   }
@@ -351,7 +377,7 @@ void loop() {
     float primaryTemp = 0.0;
     bool tempAssigned = false;
 
-    // BME280 のデータ取得
+    // BME280 / BMP280 のデータ取得
 #if ENABLE_BME280
     if (bmeReady) {
       float bmeTemp = bme.readTemperature();
@@ -364,6 +390,15 @@ void loop() {
       doc["temp"] = primaryTemp;
       doc["humidity"] = bmeHumidity;
       doc["pressure"] = bmePressure;
+    } else if (bmpReady) {
+      float bmpTemp = bmp.readTemperature();
+      float bmpPressure = bmp.readPressure() / 100.0F; // hPa
+
+      primaryTemp = bmpTemp;
+      tempAssigned = true;
+
+      doc["temp"] = primaryTemp;
+      doc["pressure"] = bmpPressure;
     }
 #endif
 
